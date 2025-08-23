@@ -32,6 +32,7 @@ df.isna().sum()
 
 
 
+
 df_survived  = pd.DataFrame()
 
 # cek survived
