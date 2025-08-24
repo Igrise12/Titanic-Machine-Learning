@@ -1,0 +1,142 @@
+import numpy as np
+import pandas as pd
+from sklearn.model_selection import train_test_split
+import matplotlib.pyplot as plt
+from LearningAlgorithms import ClassificationAlgorithms
+import seaborn as sns
+import itertools
+from sklearn.metrics import accuracy_score, confusion_matrix
+
+
+# Plot settings
+plt.style.use("fivethirtyeight")
+plt.rcParams["figure.figsize"] = (20, 5)
+plt.rcParams["figure.dpi"] = 100
+plt.rcParams["lines.linewidth"] = 2
+
+
+df = pd.read_pickle("../../data/interim/Titanic_Ready.pkl")
+
+X = df.drop("Survived", axis=1)
+y = df["Survived"]
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, random_state=42, test_size=0.25, stratify=y
+)
+
+
+fig, ax = plt.subplots(figsize=(10, 5))
+df["Survived"].value_counts().plot(kind="bar", ax=ax, color="lightblue", label="Total")
+y_train.value_counts().plot(kind="bar", ax=ax, color="dodgerblue", label="Train")
+y_test.value_counts().plot(kind="bar", ax=ax, color="red", label="Test")
+plt.legend()
+plt.show()
+
+
+learner = ClassificationAlgorithms()
+
+max_feature = 4
+selected_features, ordered_features, ordered_scores = learner.forward_selection(
+    max_feature, X_train, y_train
+)
+
+selected_features = ["Fare", "Embarked", "Pclass", "Sex"]
+
+plt.figure(figsize=(10, 5))
+plt.plot(np.arange(1, max_feature + 1, 1), ordered_scores)
+plt.xlabel("Number of Accuracy")
+plt.ylabel("Accuracy")
+plt.xticks(np.arange(1, max_feature + 1, 1))
+plt.show()
+
+
+iterations = 3
+score_df  = pd.DataFrame()
+
+
+for i, f in enumerate(selected_features):
+    selected_train_X = X_train[[f]]
+    selected_test_X  = X_test[[f]]
+
+    # First run non deterministic classifiers to average their score.
+    performance_test_nn = 0
+    performance_test_rf = 0
+
+    for it in range(0, iterations):
+        print("\tTraining neural network,", it)
+        (
+            class_train_y,
+            class_test_y,
+            class_train_prob_y,
+            class_test_prob_y,
+        ) = learner.feedforward_neural_network(
+            selected_train_X,
+            y_train,
+            selected_test_X,
+            gridsearch=False,
+        )
+        performance_test_nn += accuracy_score(y_test, class_test_y)
+
+        print("\tTraining random forest,", it)
+        (
+            class_train_y,
+            class_test_y,
+            class_train_prob_y,
+            class_test_prob_y,
+        ) = learner.random_forest(
+            selected_train_X, y_train, selected_test_X, gridsearch=True
+        )
+        performance_test_rf += accuracy_score(y_test, class_test_y)
+
+    performance_test_nn = performance_test_nn / iterations
+    performance_test_rf = performance_test_rf / iterations
+
+    # And we run our deterministic classifiers:
+    print("\tTraining KNN")
+    (
+        class_train_y,
+        class_test_y,
+        class_train_prob_y,
+        class_test_prob_y,
+    ) = learner.k_nearest_neighbor(
+        selected_train_X, y_train, selected_test_X, gridsearch=True
+    )
+    performance_test_knn = accuracy_score(y_test, class_test_y)
+
+    print("\tTraining decision tree")
+    (
+        class_train_y,
+        class_test_y,
+        class_train_prob_y,
+        class_test_prob_y,
+    ) = learner.decision_tree(
+        selected_train_X, y_train, selected_test_X, gridsearch=True
+    )
+    performance_test_dt = accuracy_score(y_test, class_test_y)
+
+    print("\tTraining naive bayes")
+    (
+        class_train_y,
+        class_test_y,
+        class_train_prob_y,
+        class_test_prob_y,
+    ) = learner.naive_bayes(selected_train_X, y_train, selected_test_X)
+
+    performance_test_nb = accuracy_score(y_test, class_test_y)
+
+    # Save results to dataframe
+    models = ["NN", "RF", "KNN", "DT", "NB"]
+    new_scores = pd.DataFrame(
+        {
+            "model": models,
+            "feature_set": f,
+            "accuracy": [
+                performance_test_nn,
+                performance_test_rf,
+                performance_test_knn,
+                performance_test_dt,
+                performance_test_nb,
+            ],
+        }
+    )
+    score_df = pd.concat([score_df, new_scores])
